@@ -49,6 +49,13 @@ else
 fi
 
 conda activate "${DREAMZERO_ENV_NAME}"
+
+# Some managed GPU containers export global pip constraints for their system
+# Python. They can conflict with DreamZero's pinned env dependencies inside this
+# isolated conda env, e.g. datasets requiring dill<0.3.9 while the host pins
+# dill==0.3.9.
+unset PIP_CONSTRAINT PIP_CONSTRAINTS
+
 python -m pip install --upgrade pip setuptools wheel 2>&1 | tee -a "${LOG_DIR}/dreamzero_pip_bootstrap_$(timestamp).log"
 
 info "Installing PyTorch 2.8 CUDA 12.9 wheels."
@@ -61,7 +68,7 @@ python -m pip install -e "${DREAMZERO_REPO}" --no-deps 2>&1 | tee -a "${LOG_DIR}
 
 info "Installing DreamZero common runtime dependencies."
 python -m pip install \
-  av==15.0.0 pyttsx3==2.90 scipy==1.15.2 numpy==1.26.4 matplotlib hydra-core "ray[default]==2.47.1" \
+  av==15.0.0 pyttsx3==2.90 scipy==1.15.3 numpy==1.26.4 matplotlib hydra-core "ray[default]==2.47.1" \
   click gymnasium mujoco termcolor flask "python-socketio>=5.13.0" flask_socketio loguru lmdb meshcat meshcat-shapes \
   rerun-sdk==0.21.0 pygame sshkeyboard msgpack msgpack-numpy peft==0.5.0 pyzmq pin pin-pink timm tyro redis lark \
   datasets==3.6.0 pandas dm_tree openai transformers==4.51.3 albumentations==1.4.18 einops==0.8.1 \
