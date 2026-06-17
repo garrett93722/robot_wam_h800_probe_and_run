@@ -71,6 +71,16 @@ start_log() {
 find_conda_base() {
   if command_exists conda; then
     conda info --base 2>/dev/null || true
+  elif [[ -x "/root/miniforge3/bin/conda" ]]; then
+    echo "/root/miniforge3"
+  elif [[ -x "${HOME}/miniforge3/bin/conda" ]]; then
+    echo "${HOME}/miniforge3"
+  elif [[ -x "/root/miniconda/bin/conda" ]]; then
+    echo "/root/miniconda"
+  elif [[ -x "${HOME}/miniconda/bin/conda" ]]; then
+    echo "${HOME}/miniconda"
+  elif [[ -x "/opt/conda/bin/conda" ]]; then
+    echo "/opt/conda"
   fi
 }
 
@@ -78,6 +88,7 @@ init_conda() {
   local base
   base="$(find_conda_base)"
   [[ -n "${base}" ]] || die "conda not found. Install Miniconda/Mambaforge first or load the module that provides conda."
+  export PATH="${base}/bin:${base}/condabin:${PATH}"
   # shellcheck disable=SC1091
   source "${base}/etc/profile.d/conda.sh"
 }
