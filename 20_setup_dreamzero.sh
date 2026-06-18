@@ -43,6 +43,14 @@ init_conda
 RUNNER="$(conda_runner)"
 if conda_env_exists "${DREAMZERO_ENV_NAME}"; then
   info "Conda env ${DREAMZERO_ENV_NAME} already exists; skipping create."
+  EXISTING_PY="$("${RUNNER}" run -n "${DREAMZERO_ENV_NAME}" python - <<'PY'
+import sys
+print(f"{sys.version_info.major}.{sys.version_info.minor}")
+PY
+)"
+  if [[ "${EXISTING_PY}" != "3.11" ]]; then
+    die "Conda env ${DREAMZERO_ENV_NAME} uses Python ${EXISTING_PY}, but DreamZero requires Python 3.11. Recreate it with: conda env remove -n ${DREAMZERO_ENV_NAME} && CONFIRM_INSTALL=1 bash 20_setup_dreamzero.sh"
+  fi
 else
   info "Creating conda env ${DREAMZERO_ENV_NAME} with Python 3.11"
   "${RUNNER}" create -y -n "${DREAMZERO_ENV_NAME}" python=3.11
