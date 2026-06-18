@@ -10,6 +10,16 @@ require_dir "${DREAMZERO_REPO}" "DreamZero repo"
 require_dir "${DREAMZERO_CKPT_DIR}" "DreamZero checkpoint dir"
 activate_env "${DREAMZERO_ENV_NAME}"
 
+MODEL_PATH="${DREAMZERO_CKPT_DIR}"
+if [[ ! -f "${MODEL_PATH}/config.json" ]]; then
+  nested="${MODEL_PATH}/$(basename "${MODEL_PATH}")"
+  if [[ -f "${nested}/config.json" ]]; then
+    warn "Checkpoint appears nested; using ${nested}"
+    MODEL_PATH="${nested}"
+  fi
+fi
+[[ -f "${MODEL_PATH}/config.json" ]] || die "Checkpoint config.json not found under ${DREAMZERO_CKPT_DIR}. Check DREAMZERO_CKPT_DIR in config.env."
+
 cd "${DREAMZERO_REPO}"
 PORT="${DREAMZERO_PORT:-5000}"
 RUN_DIR="${LOG_DIR}/dreamzero_server_$(timestamp)"
@@ -39,7 +49,7 @@ info "Starting DreamZero distributed server on 2 GPUs."
     socket_test_optimized_AR.py \
     --port "${PORT}" \
     --enable-dit-cache \
-    --model-path "${DREAMZERO_CKPT_DIR}"
+    --model-path "${MODEL_PATH}"
 ) >"${SERVER_LOG}" 2>&1 &
 SERVER_PID=$!
 echo "${SERVER_PID}" > "${PID_FILE}"
