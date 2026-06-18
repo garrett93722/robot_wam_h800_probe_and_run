@@ -112,11 +112,16 @@ else
   warn "Asset download skipped. Set DOWNLOAD_DROID_SIM_ASSETS=1 after confirming disk and HF access."
 fi
 
-cd "${DREAMZERO_REPO}"
 EVAL_LOG="${LOG_DIR}/dreamzero_droid_sim_eval_$(timestamp).log"
 info "Running DreamZero sim eval against ${API_HOST}:${API_PORT}"
+cd "${SIM_EVALS_DIR}"
 set +e
-python eval_utils/run_sim_eval.py --host "${API_HOST}" --port "${API_PORT}" 2>&1 | tee "${EVAL_LOG}"
+uv run python "${DREAMZERO_REPO}/eval_utils/run_sim_eval.py" \
+  --host "${API_HOST}" \
+  --port "${API_PORT}" \
+  --episodes "${DREAMZERO_SIM_EPISODES:-1}" \
+  --scene "${DREAMZERO_SIM_SCENE:-1}" \
+  --headless 2>&1 | tee "${EVAL_LOG}"
 STATUS=${PIPESTATUS[0]}
 set -e
 
