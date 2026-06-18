@@ -56,6 +56,16 @@ bash 22_run_dreamzero_server_smoke.sh
 The DreamZero setup uses a separate `dreamzero` conda env and defaults to
 `DREAMZERO_CUDA_VISIBLE_DEVICES=0,1`.
 
+If the server is `SIGKILL`ed while loading DreamZero-DROID and `resource.log`
+shows `/sys/fs/cgroup/memory.current` reaching `/sys/fs/cgroup/memory.max`,
+patch the checkpoint loader to stream safetensor shards instead of building one
+large in-memory state dict:
+
+```bash
+bash 24_patch_dreamzero_streaming_load.sh
+DREAMZERO_ENABLE_DIT_CACHE=0 DREAMZERO_DISABLE_TORCH_COMPILE=1 bash 22_run_dreamzero_server_smoke.sh
+```
+
 ## Fallback Route
 
 If DreamZero is blocked by package or checkpoint issues, use LingBot-VA first:
