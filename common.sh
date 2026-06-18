@@ -184,6 +184,9 @@ diagnose_log() {
   if grep -Eiq "CUDA out of memory|out of memory|CUBLAS_STATUS_ALLOC_FAILED" "${file}"; then
     echo "- Looks like GPU memory is insufficient. Try fewer GPUs per process, smaller inputs, offload mode, or a smaller checkpoint."
   fi
+  if grep -Eiq "exitcode: -9|Signal 9|SIGKILL|Killed" "${file}"; then
+    echo "- Process was SIGKILLed. This is usually host RAM, GPU memory, or container cgroup pressure rather than a Python exception."
+  fi
   if grep -Eiq "driver.*too old|CUDA driver version is insufficient|unsupported.*CUDA" "${file}"; then
     echo "- CUDA driver/runtime mismatch. Check nvidia-smi driver and install a torch wheel compatible with that driver."
   fi

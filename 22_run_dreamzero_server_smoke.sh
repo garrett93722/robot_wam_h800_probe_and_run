@@ -43,15 +43,23 @@ print("basic imports OK")
 PY
 
 info "Starting DreamZero distributed server on 2 GPUs."
+SERVER_ARGS=(
+  socket_test_optimized_AR.py
+  --port "${PORT}"
+  --model-path "${MODEL_PATH}"
+)
+if [[ "${DREAMZERO_ENABLE_DIT_CACHE:-0}" == "1" ]]; then
+  warn "DREAMZERO_ENABLE_DIT_CACHE=1; enabling DIT cache. This can increase memory pressure."
+  SERVER_ARGS+=(--enable-dit-cache)
+else
+  info "DREAMZERO_ENABLE_DIT_CACHE=${DREAMZERO_ENABLE_DIT_CACHE:-0}; DIT cache disabled for conservative smoke."
+fi
 (
   export CUDA_VISIBLE_DEVICES="${DREAMZERO_CUDA_VISIBLE_DEVICES:-0,1}"
   conda run --no-capture-output -n "${DREAMZERO_ENV_NAME}" python -m torch.distributed.run \
     --standalone \
     --nproc_per_node=2 \
-    socket_test_optimized_AR.py \
-    --port "${PORT}" \
-    --enable-dit-cache \
-    --model-path "${MODEL_PATH}"
+    "${SERVER_ARGS[@]}"
 ) >"${SERVER_LOG}" 2>&1 &
 SERVER_PID=$!
 echo "${SERVER_PID}" > "${PID_FILE}"
@@ -65,12 +73,25 @@ cleanup() {
 }
 trap cleanup EXIT
 
-info "Waiting for warmup. First load may take several minutes."
-sleep "${DREAMZERO_SERVER_WARMUP_SECONDS:-120}"
-if ! kill -0 "${SERVER_PID}" >/dev/null 2>&1; then
+WARMUP_SECONDS="${DREAMZERO_SERVER_WARMUP_SECONDS:-600}"
+info "Waiting up to ${WARMUP_SECONDS}s for server port ${PORT} to listen. First load may take several minutes."
+ready=0
+for ((i=0; i<WARMUP_SECONDS; i+=5)); do
+  if ! kill -0 "${SERVER_PID}" >/dev/null 2>&1; then
+    diagnose_log "${SERVER_LOG}"
+    die "DreamZero server exited before opening port ${PORT}."
+  fi
+  if port_in_use "${PORT}"; then
+    ready=1
+    break
+  fi
+  sleep 5
+done
+if [[ "${ready}" != "1" ]]; then
   diagnose_log "${SERVER_LOG}"
-  die "DreamZero server exited during warmup."
+  die "DreamZero server did not open port ${PORT} within ${WARMUP_SECONDS}s."
 fi
+info "Server port ${PORT} is listening."
 
 info "Running DreamZero test client."
 set +e
