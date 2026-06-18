@@ -45,6 +45,31 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 cd "${SIM_EVALS_DIR}"
+if [[ "${PATCH_SIM_EVALS_UV_BUILD_DEPS:-1}" == "1" && -f "pyproject.toml" ]]; then
+  info "Patching sim-evals uv build deps for flatdict/pkg_resources compatibility."
+  python - "pyproject.toml" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+lines = text.splitlines()
+header = "[tool.uv.extra-build-dependencies]"
+if header not in lines:
+    if lines and lines[-1].strip():
+        lines.append("")
+    lines.extend([header, 'flatdict = ["setuptools"]'])
+else:
+    idx = lines.index(header) + 1
+    end = idx
+    while end < len(lines) and not lines[end].startswith("["):
+        end += 1
+    section = "\n".join(lines[idx:end])
+    if "flatdict" not in section:
+        lines.insert(end, 'flatdict = ["setuptools"]')
+path.write_text("\n".join(lines) + "\n")
+PY
+fi
 info "Syncing sim-evals uv environment."
 uv sync 2>&1 | tee -a "${LOG_DIR}/sim_evals_uv_sync_$(timestamp).log"
 
