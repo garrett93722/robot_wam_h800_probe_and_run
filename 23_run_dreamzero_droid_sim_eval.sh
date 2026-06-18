@@ -112,6 +112,45 @@ else
   warn "Asset download skipped. Set DOWNLOAD_DROID_SIM_ASSETS=1 after confirming disk and HF access."
 fi
 
+ensure_isaacsim_system_deps() {
+  local missing=0
+  if ! ldconfig -p 2>/dev/null | grep -q "libGL.so.1"; then
+    missing=1
+  fi
+  if [[ "${missing}" != "0" ]]; then
+    if [[ "${INSTALL_SYSTEM_DEPS:-0}" == "1" && "$(id -u)" == "0" && -x /usr/bin/apt-get ]]; then
+      info "Installing minimal IsaacSim system libraries with apt."
+      apt-get update
+      DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        libgl1 \
+        libegl1 \
+        libopengl0 \
+        libglib2.0-0 \
+        libx11-6 \
+        libxext6 \
+        libxrender1 \
+        libsm6 \
+        libice6 \
+        libxkbcommon0
+    else
+      cat <<'EOF'
+[ERROR] Missing system OpenGL library libGL.so.1 required by IsaacSim.
+Install it once in the container, then rerun this script:
+
+  apt-get update
+  DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    libgl1 libegl1 libopengl0 libglib2.0-0 \
+    libx11-6 libxext6 libxrender1 libsm6 libice6 libxkbcommon0
+
+Or rerun this script with INSTALL_SYSTEM_DEPS=1 if you are root and apt-get is available.
+EOF
+      exit 1
+    fi
+  fi
+}
+
+ensure_isaacsim_system_deps
+
 EVAL_LOG="${LOG_DIR}/dreamzero_droid_sim_eval_$(timestamp).log"
 info "Running DreamZero sim eval against ${API_HOST}:${API_PORT}"
 cd "${SIM_EVALS_DIR}"
