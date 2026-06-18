@@ -58,7 +58,7 @@ header = "[tool.uv.extra-build-dependencies]"
 if header not in lines:
     if lines and lines[-1].strip():
         lines.append("")
-    lines.extend([header, 'flatdict = ["setuptools"]'])
+    lines.extend([header, 'flatdict = ["pkg_resources"]'])
 else:
     idx = lines.index(header) + 1
     end = idx
@@ -66,7 +66,12 @@ else:
         end += 1
     section = "\n".join(lines[idx:end])
     if "flatdict" not in section:
-        lines.insert(end, 'flatdict = ["setuptools"]')
+        lines.insert(end, 'flatdict = ["pkg_resources"]')
+    else:
+        lines[idx:end] = [
+            'flatdict = ["pkg_resources"]' if line.strip().startswith("flatdict") else line
+            for line in lines[idx:end]
+        ]
 path.write_text("\n".join(lines) + "\n")
 PY
 fi
