@@ -55,10 +55,11 @@ path = Path(sys.argv[1])
 text = path.read_text()
 lines = text.splitlines()
 header = "[tool.uv.extra-build-dependencies]"
+flatdict_dep = 'flatdict = ["setuptools<81"]'
 if header not in lines:
     if lines and lines[-1].strip():
         lines.append("")
-    lines.extend([header, 'flatdict = ["pkg_resources"]'])
+    lines.extend([header, flatdict_dep])
 else:
     idx = lines.index(header) + 1
     end = idx
@@ -66,10 +67,10 @@ else:
         end += 1
     section = "\n".join(lines[idx:end])
     if "flatdict" not in section:
-        lines.insert(end, 'flatdict = ["pkg_resources"]')
+        lines.insert(end, flatdict_dep)
     else:
         lines[idx:end] = [
-            'flatdict = ["pkg_resources"]' if line.strip().startswith("flatdict") else line
+            flatdict_dep if line.strip().startswith("flatdict") else line
             for line in lines[idx:end]
         ]
 path.write_text("\n".join(lines) + "\n")
