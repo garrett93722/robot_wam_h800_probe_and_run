@@ -169,7 +169,11 @@ info "Server port ${PORT} is listening."
 
 info "Running DreamZero test client."
 set +e
-conda run --no-capture-output -n "${DREAMZERO_ENV_NAME}" python test_client_AR.py --port "${PORT}" >"${CLIENT_LOG}" 2>&1
+conda run --no-capture-output -n "${DREAMZERO_ENV_NAME}" python test_client_AR.py \
+  --host "${DREAMZERO_CLIENT_HOST:-127.0.0.1}" \
+  --port "${PORT}" \
+  --use-zero-images \
+  --num-chunks "${DREAMZERO_CLIENT_NUM_CHUNKS:-1}" >"${CLIENT_LOG}" 2>&1
 STATUS=$?
 set -e
 
