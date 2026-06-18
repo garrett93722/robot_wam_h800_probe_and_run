@@ -24,25 +24,42 @@ fi
 
 cd "${DREAMZERO_REPO}"
 PORT="${DREAMZERO_PORT:-5000}"
+NPROC_PER_NODE="${DREAMZERO_NPROC_PER_NODE:-2}"
 RUN_DIR="${LOG_DIR}/dreamzero_server_$(timestamp)"
 mkdir -p "${RUN_DIR}"
 SERVER_LOG="${RUN_DIR}/server.log"
 CLIENT_LOG="${RUN_DIR}/client.log"
+RESOURCE_LOG="${RUN_DIR}/resource.log"
 PID_FILE="${RUN_DIR}/server.pid"
 
 if port_in_use "${PORT}"; then
   die "Port ${PORT} is already in use. Change DREAMZERO_PORT or stop the old server."
 fi
 
-"${CONDA_PY[@]}" - <<'PY'
+"${CONDA_PY[@]}" - "${NPROC_PER_NODE}" <<'PY'
+import sys
 import torch
+expected = int(sys.argv[1])
 print("torch", torch.__version__, "cuda", torch.version.cuda, "available", torch.cuda.is_available(), "gpus", torch.cuda.device_count())
-assert torch.cuda.device_count() >= 2, "DreamZero smoke expects at least 2 visible GPUs"
+assert torch.cuda.device_count() >= expected, f"DreamZero smoke expects at least {expected} visible GPU(s)"
 import websockets, msgpack_numpy
 print("basic imports OK")
 PY
 
-info "Starting DreamZero distributed server on 2 GPUs."
+{
+  echo "===== resource snapshot before server start ====="
+  date
+  echo "--- free -h ---"
+  free -h || true
+  echo "--- cgroup memory ---"
+  for f in /sys/fs/cgroup/memory.max /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.high /sys/fs/cgroup/memory/memory.limit_in_bytes /sys/fs/cgroup/memory/memory.usage_in_bytes; do
+    [[ -e "${f}" ]] && printf "%s: %s\n" "${f}" "$(cat "${f}" 2>/dev/null || true)"
+  done
+  echo "--- nvidia-smi ---"
+  nvidia-smi || true
+} > "${RESOURCE_LOG}" 2>&1
+
+info "Starting DreamZero distributed server on ${NPROC_PER_NODE} GPU process(es)."
 SERVER_ARGS=(
   socket_test_optimized_AR.py
   --port "${PORT}"
@@ -56,16 +73,38 @@ else
 fi
 (
   export CUDA_VISIBLE_DEVICES="${DREAMZERO_CUDA_VISIBLE_DEVICES:-0,1}"
+  export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
   conda run --no-capture-output -n "${DREAMZERO_ENV_NAME}" python -m torch.distributed.run \
     --standalone \
-    --nproc_per_node=2 \
+    --nproc_per_node="${NPROC_PER_NODE}" \
     "${SERVER_ARGS[@]}"
 ) >"${SERVER_LOG}" 2>&1 &
 SERVER_PID=$!
 echo "${SERVER_PID}" > "${PID_FILE}"
 info "Server PID ${SERVER_PID}; log ${SERVER_LOG}"
+info "Resource monitor log ${RESOURCE_LOG}"
+
+(
+  while kill -0 "${SERVER_PID}" >/dev/null 2>&1; do
+    {
+      echo
+      echo "===== resource sample $(date '+%F %T') ====="
+      free -h || true
+      for f in /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.max /sys/fs/cgroup/memory/memory.usage_in_bytes /sys/fs/cgroup/memory/memory.limit_in_bytes; do
+        [[ -e "${f}" ]] && printf "%s: %s\n" "${f}" "$(cat "${f}" 2>/dev/null || true)"
+      done
+      nvidia-smi --query-gpu=index,name,memory.used,memory.total,utilization.gpu --format=csv,noheader,nounits || true
+      ps -eo pid,ppid,pcpu,pmem,rss,vsz,comm,args | grep -E "socket_test_optimized_AR|torch.distributed.run|python" | grep -v grep || true
+    } >> "${RESOURCE_LOG}" 2>&1
+    sleep 5
+  done
+) &
+MONITOR_PID=$!
 
 cleanup() {
+  if [[ -n "${MONITOR_PID:-}" ]] && kill -0 "${MONITOR_PID}" >/dev/null 2>&1; then
+    kill "${MONITOR_PID}" || true
+  fi
   if [[ "${KEEP_DREAMZERO_SERVER:-0}" != "1" ]] && kill -0 "${SERVER_PID}" >/dev/null 2>&1; then
     info "Stopping DreamZero server PID ${SERVER_PID}"
     kill "${SERVER_PID}" || true
