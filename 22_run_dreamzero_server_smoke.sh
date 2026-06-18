@@ -31,6 +31,7 @@ SERVER_LOG="${RUN_DIR}/server.log"
 CLIENT_LOG="${RUN_DIR}/client.log"
 RESOURCE_LOG="${RUN_DIR}/resource.log"
 PID_FILE="${RUN_DIR}/server.pid"
+SITECUSTOMIZE_DIR="${RUN_DIR}/python_startup"
 
 if port_in_use "${PORT}"; then
   die "Port ${PORT} is already in use. Change DREAMZERO_PORT or stop the old server."
@@ -60,6 +61,34 @@ PY
 } > "${RESOURCE_LOG}" 2>&1
 
 info "Starting DreamZero distributed server on ${NPROC_PER_NODE} GPU process(es)."
+if [[ "${DREAMZERO_DISABLE_TORCH_COMPILE:-1}" == "1" ]]; then
+  mkdir -p "${SITECUSTOMIZE_DIR}"
+  cat > "${SITECUSTOMIZE_DIR}/sitecustomize.py" <<'PY'
+import os
+
+if os.environ.get("DREAMZERO_DISABLE_TORCH_COMPILE", "1") == "1":
+    try:
+        import torch
+
+        def _identity_compile(fn=None, *args, **kwargs):
+            if fn is None:
+                return lambda real_fn: real_fn
+            return fn
+
+        torch.compile = _identity_compile
+        try:
+            import torch._dynamo
+            torch._dynamo.config.disable = True
+        except Exception:
+            pass
+        print("[sitecustomize] torch.compile disabled for DreamZero smoke", flush=True)
+    except Exception as exc:
+        print(f"[sitecustomize] failed to disable torch.compile: {exc}", flush=True)
+PY
+  info "DREAMZERO_DISABLE_TORCH_COMPILE=1; disabling torch.compile for conservative smoke."
+else
+  info "DREAMZERO_DISABLE_TORCH_COMPILE=${DREAMZERO_DISABLE_TORCH_COMPILE:-0}; torch.compile remains enabled."
+fi
 SERVER_ARGS=(
   socket_test_optimized_AR.py
   --port "${PORT}"
@@ -74,6 +103,12 @@ fi
 (
   export CUDA_VISIBLE_DEVICES="${DREAMZERO_CUDA_VISIBLE_DEVICES:-0,1}"
   export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
+  export TORCHINDUCTOR_COMPILE_THREADS="${TORCHINDUCTOR_COMPILE_THREADS:-1}"
+  export TORCH_COMPILE_DISABLE="${TORCH_COMPILE_DISABLE:-${DREAMZERO_DISABLE_TORCH_COMPILE:-1}}"
+  export DREAMZERO_DISABLE_TORCH_COMPILE="${DREAMZERO_DISABLE_TORCH_COMPILE:-1}"
+  if [[ "${DREAMZERO_DISABLE_TORCH_COMPILE}" == "1" ]]; then
+    export PYTHONPATH="${SITECUSTOMIZE_DIR}:${PYTHONPATH:-}"
+  fi
   conda run --no-capture-output -n "${DREAMZERO_ENV_NAME}" python -m torch.distributed.run \
     --standalone \
     --nproc_per_node="${NPROC_PER_NODE}" \
