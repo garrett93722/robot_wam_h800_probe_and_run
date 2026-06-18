@@ -29,7 +29,7 @@ cat <<'PLAN'
 DreamZero official baseline:
 - Python 3.11
 - PyTorch 2.8+ with CUDA 12.9+ wheel path
-- flash-attn with MAX_JOBS=8
+- flash-attn, preferring a resumable prebuilt wheel download
 - 2 GPUs for distributed inference server
 
 Important:
@@ -77,8 +77,65 @@ python -m pip install \
   2>&1 | tee -a "${LOG_DIR}/dreamzero_common_deps_$(timestamp).log"
 
 FLASH_LOG="${LOG_DIR}/dreamzero_flash_attn_$(timestamp).log"
-info "Installing flash-attn with MAX_JOBS=8."
-MAX_JOBS=8 python -m pip install --no-build-isolation flash-attn 2>&1 | tee "${FLASH_LOG}" || {
+FLASH_ATTN_VERSION="${FLASH_ATTN_VERSION:-2.8.3.post1}"
+FLASH_ATTN_WHEEL_DIR="${FLASH_ATTN_WHEEL_DIR:-${PROJECT_ROOT}/wheelhouse}"
+mkdir -p "${FLASH_ATTN_WHEEL_DIR}"
+FLASH_ATTN_WHEEL_URL="$(
+  python - "${FLASH_ATTN_VERSION}" <<'PY'
+import sys
+import torch
+
+version = sys.argv[1]
+py_tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
+torch_version = torch.__version__.split("+", 1)[0]
+torch_major_minor = ".".join(torch_version.split(".")[:2])
+print(
+    "https://github.com/Dao-AILab/flash-attention/releases/download/"
+    f"v{version}/flash_attn-{version}+cu12torch{torch_major_minor}"
+    f"cxx11abiTRUE-{py_tag}-{py_tag}-linux_x86_64.whl"
+)
+PY
+)"
+FLASH_ATTN_WHEEL_PATH="${FLASH_ATTN_WHEEL_DIR}/$(basename "${FLASH_ATTN_WHEEL_URL}")"
+
+info "Installing flash-attn. First try resumable prebuilt wheel: ${FLASH_ATTN_WHEEL_URL}"
+{
+  set +e
+  DOWNLOAD_STATUS=1
+  if command_exists wget; then
+    wget -c --tries=20 --timeout=30 --read-timeout=60 -O "${FLASH_ATTN_WHEEL_PATH}" "${FLASH_ATTN_WHEEL_URL}"
+    DOWNLOAD_STATUS=$?
+  elif command_exists curl; then
+    curl -L --retry 20 --retry-delay 3 --connect-timeout 30 -C - -o "${FLASH_ATTN_WHEEL_PATH}" "${FLASH_ATTN_WHEEL_URL}"
+    DOWNLOAD_STATUS=$?
+  else
+    echo "No wget/curl found; skipping prebuilt wheel download."
+  fi
+
+  if [[ "${DOWNLOAD_STATUS}" -eq 0 ]]; then
+    python -m pip install "${FLASH_ATTN_WHEEL_PATH}"
+    INSTALL_STATUS=$?
+  else
+    echo "Prebuilt wheel download failed with status ${DOWNLOAD_STATUS}; falling back to source build."
+    INSTALL_STATUS=1
+  fi
+
+  if [[ "${INSTALL_STATUS}" -ne 0 ]]; then
+    echo "Source fallback: compile only H800/H100 sm90 with low parallelism."
+    TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST:-9.0}" \
+      MAX_JOBS="${FLASH_ATTN_MAX_JOBS:-2}" \
+      python -m pip install --no-build-isolation flash-attn
+    INSTALL_STATUS=$?
+  fi
+
+  python - <<'PY'
+import flash_attn
+print("flash_attn import OK", getattr(flash_attn, "__version__", "unknown"))
+PY
+  IMPORT_STATUS=$?
+  set -e
+  exit $(( INSTALL_STATUS != 0 || IMPORT_STATUS != 0 ))
+} 2>&1 | tee "${FLASH_LOG}" || {
   diagnose_log "${FLASH_LOG}"
   die "flash-attn install failed."
 }
