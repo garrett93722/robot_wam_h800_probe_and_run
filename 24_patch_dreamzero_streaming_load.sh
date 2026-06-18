@@ -12,7 +12,6 @@ TARGET="${DREAMZERO_REPO}/groot/vla/model/dreamzero/base_vla.py"
 python - "${TARGET}" <<'PY'
 from pathlib import Path
 import sys
-import textwrap
 
 p = Path(sys.argv[1])
 s = p.read_text()
@@ -21,19 +20,18 @@ if "loading pretrained@@@@@ (streaming shards)" in s:
     print(f"already patched {p}")
     raise SystemExit(0)
 
-start_marker = """    @classmethod
-    def from_pretrained(
-        cls, 
-        pretrained_model_name_or_path: str,
-        config: VLAConfig = None
-    ):
-"""
-start = s.rfind(start_marker)
+anchor = '        print("loading pretrained@@@@@")'
+anchor_pos = s.find(anchor)
+if anchor_pos < 0:
+    raise SystemExit("Could not find old VLA.from_pretrained loading anchor")
+
+start = s.rfind("\n    @classmethod\n", 0, anchor_pos)
 if start < 0:
-    raise SystemExit("Could not find target VLA.from_pretrained method")
+    raise SystemExit("Could not find start of target VLA.from_pretrained method")
+start += 1
 
 end_marker = "\n    def post_initialize(self):\n"
-end = s.find(end_marker, start)
+end = s.find(end_marker, anchor_pos)
 if end < 0:
     raise SystemExit("Could not find end of VLA.from_pretrained method")
 
@@ -129,8 +127,16 @@ if not backup.exists():
     backup.write_text(s)
 
 p.write_text(s[:start] + replacement + s[end:])
+patched = p.read_text()
+if "loading pretrained@@@@@ (streaming shards)" not in patched:
+    raise SystemExit("Patch verification failed: streaming marker missing")
+method = patched[start:patched.find(end_marker, start)]
+if 'state_dict = {}' in method and 'state_dict.update' in method:
+    raise SystemExit("Patch verification failed: old bulk state_dict loader still present in target method")
 print(f"patched streaming shard load in {p}")
 print(f"backup: {backup}")
 PY
 
+grep -n "loading pretrained@@@@@ (streaming shards)" "${TARGET}"
+grep -n "Loading sharded safetensors using streaming index" "${TARGET}"
 echo "DreamZero streaming checkpoint load patch is ready."
