@@ -8,7 +8,9 @@ start_log "dreamzero_server_smoke"
 
 require_dir "${DREAMZERO_REPO}" "DreamZero repo"
 require_dir "${DREAMZERO_CKPT_DIR}" "DreamZero checkpoint dir"
-activate_env "${DREAMZERO_ENV_NAME}"
+init_conda
+conda_env_exists "${DREAMZERO_ENV_NAME}" || die "Missing conda env ${DREAMZERO_ENV_NAME}. Run CONFIRM_INSTALL=1 bash 20_setup_dreamzero.sh first."
+CONDA_PY=(conda run --no-capture-output -n "${DREAMZERO_ENV_NAME}" python)
 
 MODEL_PATH="${DREAMZERO_CKPT_DIR}"
 if [[ ! -f "${MODEL_PATH}/config.json" ]]; then
@@ -32,7 +34,7 @@ if port_in_use "${PORT}"; then
   die "Port ${PORT} is already in use. Change DREAMZERO_PORT or stop the old server."
 fi
 
-python - <<'PY'
+"${CONDA_PY[@]}" - <<'PY'
 import torch
 print("torch", torch.__version__, "cuda", torch.version.cuda, "available", torch.cuda.is_available(), "gpus", torch.cuda.device_count())
 assert torch.cuda.device_count() >= 2, "DreamZero smoke expects at least 2 visible GPUs"
@@ -43,7 +45,7 @@ PY
 info "Starting DreamZero distributed server on 2 GPUs."
 (
   export CUDA_VISIBLE_DEVICES="${DREAMZERO_CUDA_VISIBLE_DEVICES:-0,1}"
-  python -m torch.distributed.run \
+  conda run --no-capture-output -n "${DREAMZERO_ENV_NAME}" python -m torch.distributed.run \
     --standalone \
     --nproc_per_node=2 \
     socket_test_optimized_AR.py \
@@ -72,7 +74,7 @@ fi
 
 info "Running DreamZero test client."
 set +e
-python test_client_AR.py --port "${PORT}" >"${CLIENT_LOG}" 2>&1
+conda run --no-capture-output -n "${DREAMZERO_ENV_NAME}" python test_client_AR.py --port "${PORT}" >"${CLIENT_LOG}" 2>&1
 STATUS=$?
 set -e
 
