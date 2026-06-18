@@ -72,7 +72,7 @@ python -m pip install \
   click gymnasium mujoco termcolor flask "python-socketio>=5.13.0" flask_socketio loguru lmdb meshcat meshcat-shapes \
   rerun-sdk==0.21.0 pygame sshkeyboard msgpack msgpack-numpy peft==0.5.0 pyzmq pin pin-pink timm tyro redis lark \
   datasets==3.6.0 pandas dm_tree openai transformers==4.51.3 albumentations==1.4.18 einops==0.8.1 \
-  tianshou==0.5.1 imageio==2.34.2 imageio-ffmpeg wandb opencv-python-headless==4.8.0.74 diffusers==0.30.2 ftfy \
+  tianshou==0.5.1 imageio==2.34.2 imageio-ffmpeg wandb opencv-python-headless==4.10.0.84 diffusers==0.30.2 ftfy \
   nvidia-modelopt nvidia-modelopt-core openpi-client==0.1.1 huggingface_hub decord2 deepspeed tiktoken sentencepiece \
   2>&1 | tee -a "${LOG_DIR}/dreamzero_common_deps_$(timestamp).log"
 
