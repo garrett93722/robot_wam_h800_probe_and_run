@@ -76,6 +76,27 @@ else:
 path.write_text("\n".join(lines) + "\n")
 PY
 fi
+NVIDIA_PYPI_URL="${NVIDIA_PYPI_URL:-https://pypi.nvidia.com}"
+export UV_EXTRA_INDEX_URL="${UV_EXTRA_INDEX_URL:-${NVIDIA_PYPI_URL}}"
+export PIP_EXTRA_INDEX_URL="${PIP_EXTRA_INDEX_URL:-${NVIDIA_PYPI_URL}}"
+info "Using NVIDIA PyPI extra index: ${NVIDIA_PYPI_URL}"
+if [[ "${CHECK_NVIDIA_PYPI:-1}" == "1" ]]; then
+  python - "${NVIDIA_PYPI_URL}" <<'PY'
+import socket
+import sys
+import urllib.request
+
+url = sys.argv[1].rstrip("/") + "/"
+host = url.split("//", 1)[-1].split("/", 1)[0]
+try:
+    socket.getaddrinfo(host, 443)
+    with urllib.request.urlopen(url, timeout=10) as resp:
+        print(f"NVIDIA PyPI reachable: {url} status={resp.status}")
+except Exception as exc:
+    print(f"[WARN] NVIDIA PyPI check failed for {url}: {type(exc).__name__}: {exc}")
+    print("[WARN] IsaacSim placeholder wheels require this host. Configure DNS/proxy or rerun after network is fixed.")
+PY
+fi
 info "Syncing sim-evals uv environment."
 uv sync 2>&1 | tee -a "${LOG_DIR}/sim_evals_uv_sync_$(timestamp).log"
 
