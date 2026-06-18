@@ -172,6 +172,27 @@ port_in_use() {
     ss -ltn | awk '{print $4}' | grep -Eq "[:.]${port}$"
   elif command_exists lsof; then
     lsof -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1
+  elif command_exists netstat; then
+    netstat -ltn 2>/dev/null | awk '{print $4}' | grep -Eq "[:.]${port}$"
+  elif command_exists python3 || command_exists python; then
+    local py_bin
+    if command_exists python3; then
+      py_bin="python3"
+    else
+      py_bin="python"
+    fi
+    "${py_bin}" - "${port}" <<'PY'
+import socket
+import sys
+
+port = int(sys.argv[1])
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.settimeout(0.5)
+try:
+    raise SystemExit(0 if sock.connect_ex(("127.0.0.1", port)) == 0 else 1)
+finally:
+    sock.close()
+PY
   else
     return 1
   fi
