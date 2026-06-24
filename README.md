@@ -9,6 +9,7 @@ Start with environment probing only; do not install anything until you have read
 - `01_summarize_env.py`: convert `logs/env_report_*.txt` into a clearer `logs/env_summary_*.md`.
 - `02_probe_h800_readiness.sh`: focused 2xH800 readiness probe for GPUs, driver, topology, repos, network, and ports.
 - `05_bootstrap_h800_dreamzero_env.sh`: one-command rebuild for a fresh 2xH800 container, including Miniforge, DreamZero, checkpoint, streaming-load patch, and optional sim-evals/IsaacSim preparation.
+- `06_run_dreamzero_report_smoke.sh`: one-command DreamZero-DROID report run for meetings; skips IsaacSim, starts/reuses the server, runs zero-image and real-frame clients, and writes `logs/dreamzero_report_*.md`.
 - `config.example.env`: copy to `config.env` and edit all paths/tokens locally on the server.
 - `common.sh`: shared helpers for config loading, conda activation, logging, disk checks, port checks, and error diagnosis.
 - `10_setup_lingbot_va.sh`: prepare a separate LingBot-VA conda env. Requires `CONFIRM_INSTALL=1` to install.
@@ -62,6 +63,19 @@ PREPARE_SIM_EVALS=0 CONFIRM_INSTALL=1 bash 05_bootstrap_h800_dreamzero_env.sh
 
 # Also run the minimal server/client smoke at the end.
 RUN_DREAMZERO_SMOKE=1 CONFIRM_INSTALL=1 bash 05_bootstrap_h800_dreamzero_env.sh
+```
+
+For the fastest meeting-ready DreamZero result:
+
+```bash
+cd /workspace/robot_wam_h800_probe_and_run
+CONFIRM_INSTALL=1 bash 06_run_dreamzero_report_smoke.sh
+```
+
+To add a heavier 15-chunk real-frame client run:
+
+```bash
+REPORT_REAL_CHUNKS=1,3,15 CONFIRM_INSTALL=1 bash 06_run_dreamzero_report_smoke.sh
 ```
 
 After reading the summary, choose one route:

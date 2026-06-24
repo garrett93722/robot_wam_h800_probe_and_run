@@ -65,6 +65,19 @@ If you only need DreamZero server smoke and not IsaacSim/sim-evals:
 PREPARE_SIM_EVALS=0 CONFIRM_INSTALL=1 bash 05_bootstrap_h800_dreamzero_env.sh
 ```
 
+For a meeting-ready report run that skips IsaacSim and records zero-image plus
+real-frame client evidence:
+
+```bash
+CONFIRM_INSTALL=1 bash 06_run_dreamzero_report_smoke.sh
+```
+
+Optional stronger real-frame run:
+
+```bash
+REPORT_REAL_CHUNKS=1,3,15 CONFIRM_INSTALL=1 bash 06_run_dreamzero_report_smoke.sh
+```
+
 Manual route, if you prefer to run each stage yourself:
 
 ```bash
