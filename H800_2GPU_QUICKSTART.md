@@ -44,7 +44,28 @@ If any clone URL fails, upload the local `D:\worldmodel\sources\...` snapshot.
 
 ## DreamZero First Route
 
-Use this on 2xH800 if the probe shows both GPUs and driver/network are OK:
+For a fresh 2xH800 container, use the bootstrap route first. It installs or
+repairs Miniforge, sets up DreamZero, downloads the DROID checkpoint, applies
+the streaming checkpoint-load patch, and can prepare sim-evals/IsaacSim:
+
+```bash
+cd /workspace/robot_wam_h800_probe_and_run
+CONFIRM_INSTALL=1 bash 05_bootstrap_h800_dreamzero_env.sh
+```
+
+If the conda env was accidentally created with the wrong Python version, rebuild it:
+
+```bash
+RESET_DREAMZERO_ENV=1 CONFIRM_INSTALL=1 bash 05_bootstrap_h800_dreamzero_env.sh
+```
+
+If you only need DreamZero server smoke and not IsaacSim/sim-evals:
+
+```bash
+PREPARE_SIM_EVALS=0 CONFIRM_INSTALL=1 bash 05_bootstrap_h800_dreamzero_env.sh
+```
+
+Manual route, if you prefer to run each stage yourself:
 
 ```bash
 cd /workspace/robot_wam_h800_probe_and_run

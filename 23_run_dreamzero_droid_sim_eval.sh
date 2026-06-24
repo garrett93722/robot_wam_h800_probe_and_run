@@ -151,6 +151,11 @@ EOF
 
 ensure_isaacsim_system_deps
 
+if [[ "${DREAMZERO_SIM_PREPARE_ONLY:-0}" == "1" ]]; then
+  info "DREAMZERO_SIM_PREPARE_ONLY=1; sim-evals env/assets/system deps are prepared. Skipping actual evaluation."
+  exit 0
+fi
+
 EVAL_LOG="${LOG_DIR}/dreamzero_droid_sim_eval_$(timestamp).log"
 info "Running DreamZero sim eval against ${API_HOST}:${API_PORT}"
 cd "${SIM_EVALS_DIR}"
