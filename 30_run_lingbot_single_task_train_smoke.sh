@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/common.sh"
+start_log "lingbot_single_task_train_smoke"
+
+info "LingBot-VA single-task fine-tune smoke."
+info "This only checks whether the training path can load one prepared dataset and run a few optimizer steps."
+
+confirm_install_or_exit
+
+require_dir "${LINGBOT_REPO}" "LingBot-VA repo"
+require_dir "${LINGBOT_CKPT_DIR}" "LingBot checkpoint"
+
+LINGBOT_TRAIN_DATASET_DIR="${LINGBOT_TRAIN_DATASET_DIR:-}"
+[[ -n "${LINGBOT_TRAIN_DATASET_DIR}" ]] || die "Set LINGBOT_TRAIN_DATASET_DIR to a prepared LingBot/LeRobot training dataset directory."
+require_dir "${LINGBOT_TRAIN_DATASET_DIR}" "LingBot train dataset"
+
+SMOKE_STEPS="${LINGBOT_TRAIN_STEPS:-2}"
+SMOKE_NGPU="${LINGBOT_TRAIN_NGPU:-1}"
+SMOKE_MASTER_PORT="${LINGBOT_TRAIN_MASTER_PORT:-29631}"
+SMOKE_CONFIG="${LINGBOT_TRAIN_CONFIG:-libero_train}"
+SMOKE_SAVE_ROOT="${LINGBOT_TRAIN_SAVE_ROOT:-${PROJECT_ROOT}/outputs/lingbot_train_smoke_$(timestamp)}"
+
+if [[ "${SMOKE_CONFIG}" != "libero_train" && "${SMOKE_CONFIG}" != "robotwin_train" && "${SMOKE_CONFIG}" != "demo_train" ]]; then
+  die "Unsupported LINGBOT_TRAIN_CONFIG=${SMOKE_CONFIG}. Use libero_train, robotwin_train, or demo_train."
+fi
+
+INFO_COUNT="$(find "${LINGBOT_TRAIN_DATASET_DIR}" -path "*/meta/info.json" -type f | wc -l | tr -d ' ')"
+[[ "${INFO_COUNT}" != "0" ]] || die "No LeRobot meta/info.json found under ${LINGBOT_TRAIN_DATASET_DIR}."
+[[ -d "${LINGBOT_TRAIN_DATASET_DIR}/latents" ]] || die "Missing ${LINGBOT_TRAIN_DATASET_DIR}/latents. LingBot training needs pre-extracted VAE latents, not only raw videos."
+[[ -f "${LINGBOT_TRAIN_DATASET_DIR}/empty_emb.pt" ]] || die "Missing ${LINGBOT_TRAIN_DATASET_DIR}/empty_emb.pt. Generate/copy it before training."
+
+info "Dataset root: ${LINGBOT_TRAIN_DATASET_DIR}"
+info "Found ${INFO_COUNT} LeRobot dataset(s) under dataset root."
+info "Config: ${SMOKE_CONFIG}; steps: ${SMOKE_STEPS}; GPUs: ${SMOKE_NGPU}"
+info "Output: ${SMOKE_SAVE_ROOT}"
+
+init_conda
+if ! conda_env_exists "${LINGBOT_ENV_NAME}" 2>/dev/null; then
+  info "LingBot env ${LINGBOT_ENV_NAME} does not exist; running setup first."
+  CONFIRM_INSTALL=1 SKIP_FLASH_ATTN="${SKIP_FLASH_ATTN:-1}" DOWNLOAD_LINGBOT_CKPT="${DOWNLOAD_LINGBOT_CKPT:-0}" \
+    bash "${SCRIPT_DIR}/10_setup_lingbot_va.sh"
+fi
+
+activate_env "${LINGBOT_ENV_NAME}"
+
+info "Installing LingBot post-training dependencies."
+python -m pip install scipy wandb lerobot==0.3.3 --no-deps \
+  2>&1 | tee -a "${LOG_DIR}/lingbot_train_deps_$(timestamp).log" || {
+    warn "Direct lerobot==0.3.3 install failed. Trying official PyPI without the current mirror."
+    python -m pip install scipy wandb lerobot==0.3.3 --no-deps -i https://pypi.org/simple \
+      2>&1 | tee -a "${LOG_DIR}/lingbot_train_deps_pypi_$(timestamp).log"
+  }
+
+info "Patching LingBot train config for a tiny local smoke."
+LINGBOT_REPO="${LINGBOT_REPO}" \
+LINGBOT_CKPT_DIR="${LINGBOT_CKPT_DIR}" \
+LINGBOT_TRAIN_DATASET_DIR="${LINGBOT_TRAIN_DATASET_DIR}" \
+SMOKE_STEPS="${SMOKE_STEPS}" \
+SMOKE_SAVE_ROOT="${SMOKE_SAVE_ROOT}" \
+SMOKE_CONFIG="${SMOKE_CONFIG}" \
+python - <<'PY'
+import json
+import os
+from pathlib import Path
+
+repo = Path(os.environ["LINGBOT_REPO"])
+ckpt = Path(os.environ["LINGBOT_CKPT_DIR"])
+dataset = Path(os.environ["LINGBOT_TRAIN_DATASET_DIR"])
+steps = int(os.environ["SMOKE_STEPS"])
+save_root = Path(os.environ["SMOKE_SAVE_ROOT"])
+config_name = os.environ["SMOKE_CONFIG"]
+
+cfg_map = {
+    "libero_train": repo / "wan_va" / "configs" / "va_libero_train_cfg.py",
+    "robotwin_train": repo / "wan_va" / "configs" / "va_robotwin_train_cfg.py",
+    "demo_train": repo / "wan_va" / "configs" / "va_demo_train_cfg.py",
+}
+cfg_path = cfg_map[config_name]
+text = cfg_path.read_text(encoding="utf-8")
+backup = cfg_path.with_suffix(cfg_path.suffix + ".bak_train_smoke")
+if not backup.exists():
+    backup.write_text(text, encoding="utf-8")
+
+append = f'''
+
+# --- Codex H800 train-smoke overrides ---
+{Path(cfg_path).stem}.dataset_path = r"{dataset}"
+{Path(cfg_path).stem}.empty_emb_path = r"{dataset / "empty_emb.pt"}"
+{Path(cfg_path).stem}.enable_wandb = False
+{Path(cfg_path).stem}.load_worker = 0
+{Path(cfg_path).stem}.save_interval = max(1, {steps})
+{Path(cfg_path).stem}.gc_interval = 1
+{Path(cfg_path).stem}.batch_size = 1
+{Path(cfg_path).stem}.gradient_accumulation_steps = 1
+{Path(cfg_path).stem}.num_steps = {steps}
+{Path(cfg_path).stem}.save_root = r"{save_root}"
+{Path(cfg_path).stem}.wan22_pretrained_model_name_or_path = r"{ckpt}"
+# --- end Codex H800 train-smoke overrides ---
+'''
+marker = "# --- Codex H800 train-smoke overrides ---"
+if marker in text:
+    text = text.split(marker)[0].rstrip() + append
+else:
+    text = text.rstrip() + append
+cfg_path.write_text(text + "\n", encoding="utf-8")
+print(f"patched {cfg_path}")
+
+t_cfg = ckpt / "transformer" / "config.json"
+if not t_cfg.exists():
+    raise SystemExit(f"missing transformer config: {t_cfg}")
+data = json.loads(t_cfg.read_text(encoding="utf-8"))
+old = data.get("attn_mode")
+data["attn_mode"] = "flex"
+t_cfg.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+print(f"set {t_cfg} attn_mode: {old!r} -> 'flex'")
+PY
+
+info "Checking train imports and dataset construction before launching distributed training."
+cd "${LINGBOT_REPO}"
+SMOKE_CONFIG="${SMOKE_CONFIG}" PYTHONPATH="${LINGBOT_REPO}:${PYTHONPATH:-}" python - <<'PY'
+import torch
+import os
+from wan_va.configs import VA_CONFIGS
+from wan_va.dataset import MultiLatentLeRobotDataset
+
+config_name = os.environ["SMOKE_CONFIG"]
+cfg = VA_CONFIGS[config_name]
+print("torch", torch.__version__, "cuda", torch.version.cuda, "available", torch.cuda.is_available())
+print("config", config_name)
+print("dataset_path", cfg.dataset_path)
+print("empty_emb_path", cfg.empty_emb_path)
+ds = MultiLatentLeRobotDataset(cfg, num_init_worker=1)
+print("dataset_len", len(ds))
+sample = ds[0]
+for key, value in sample.items():
+    shape = tuple(value.shape) if hasattr(value, "shape") else type(value).__name__
+    print(key, shape)
+PY
+
+info "Launching LingBot tiny train smoke."
+export TOKENIZERS_PARALLELISM=false
+export WANDB_MODE=disabled
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
+
+PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}" \
+python -m torch.distributed.run \
+  --nproc_per_node="${SMOKE_NGPU}" \
+  --local-ranks-filter=0 \
+  --master_port "${SMOKE_MASTER_PORT}" \
+  --tee 3 \
+  -m wan_va.train --config-name "${SMOKE_CONFIG}" --save-root "${SMOKE_SAVE_ROOT}"
+
+info "LingBot train smoke finished."
+info "Output: ${SMOKE_SAVE_ROOT}"
+warn "For inference/eval after training, reset ${LINGBOT_CKPT_DIR}/transformer/config.json attn_mode to torch or flashattn."

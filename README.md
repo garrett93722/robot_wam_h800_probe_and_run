@@ -21,6 +21,7 @@ Start with environment probing only; do not install anything until you have read
 - `16_patch_lingbot_libero_client_fallback.sh`: patch LingBot LIBERO client to avoid requiring LeRobot just for JSON writing.
 - `17_patch_lingbot_websocket_client_compat.sh`: patch websocket client connection compatibility and print connection errors.
 - `18_download_libero_datasets.sh`: download/check LIBERO datasets, defaulting to the official Box links because the old HuggingFace allow-pattern path can fetch 0 files.
+- `30_run_lingbot_single_task_train_smoke.sh`: run a tiny LingBot-VA single-task fine-tune smoke on a prepared LeRobot+latent dataset.
 - `stop_lingbot_server.sh`: stop a background LingBot LIBERO server from its PID file.
 - `20_setup_dreamzero.sh`: prepare a separate DreamZero conda env. Requires `CONFIRM_INSTALL=1` to install.
 - `21_download_dreamzero_ckpt.sh`: download DreamZero-DROID and/or DreamZero-AgiBot checkpoints with resume support.
@@ -76,6 +77,17 @@ To add a heavier 15-chunk real-frame client run:
 
 ```bash
 REPORT_REAL_CHUNKS=1,3,15 CONFIRM_INSTALL=1 bash 06_run_dreamzero_report_smoke.sh
+```
+
+For a LingBot-VA single-task fine-tune smoke, first prepare a dataset with LeRobot metadata, `latents/`, and `empty_emb.pt`, then run:
+
+```bash
+cd /workspace/robot_wam_h800_probe_and_run
+LINGBOT_TRAIN_DATASET_DIR=/workspace/data/your_single_task_lingbot_dataset \
+LINGBOT_TRAIN_STEPS=2 \
+LINGBOT_TRAIN_NGPU=1 \
+CONFIRM_INSTALL=1 \
+bash 30_run_lingbot_single_task_train_smoke.sh
 ```
 
 After reading the summary, choose one route:
