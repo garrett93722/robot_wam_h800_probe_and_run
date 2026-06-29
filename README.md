@@ -22,6 +22,7 @@ Start with environment probing only; do not install anything until you have read
 - `17_patch_lingbot_websocket_client_compat.sh`: patch websocket client connection compatibility and print connection errors.
 - `18_download_libero_datasets.sh`: download/check LIBERO datasets, defaulting to the official Box links because the old HuggingFace allow-pattern path can fetch 0 files.
 - `30_run_lingbot_single_task_train_smoke.sh`: run a tiny LingBot-VA single-task fine-tune smoke on a prepared LeRobot+latent dataset.
+- `40_run_table30_subtask_batch.sh`: select several RoboChallenge Table30 subtasks and run conversion, latent extraction, and short LingBot-VA fine-tune jobs on 2 GPUs.
 - `stop_lingbot_server.sh`: stop a background LingBot LIBERO server from its PID file.
 - `20_setup_dreamzero.sh`: prepare a separate DreamZero conda env. Requires `CONFIRM_INSTALL=1` to install.
 - `21_download_dreamzero_ckpt.sh`: download DreamZero-DROID and/or DreamZero-AgiBot checkpoints with resume support.
@@ -88,6 +89,19 @@ LINGBOT_TRAIN_STEPS=2 \
 LINGBOT_TRAIN_NGPU=1 \
 CONFIRM_INSTALL=1 \
 bash 30_run_lingbot_single_task_train_smoke.sh
+```
+
+For RoboChallenge Table30 subtask expansion, point the script at the raw Table30 task root. It will pick cleaning/tool/simple manipulation subtasks first and run short jobs in parallel:
+
+```bash
+cd /workspace/robot_wam_h800_probe_and_run
+ROBOCHALLENGE_RAW_ROOT=/workspace/data/robochallenge/table30 \
+MAX_TASKS=4 \
+MAX_EPISODES=10 \
+TRAIN_STEPS=50 \
+TABLE30_PARALLEL=2 \
+CONFIRM_INSTALL=1 \
+bash 40_run_table30_subtask_batch.sh
 ```
 
 After reading the summary, choose one route:
