@@ -10,6 +10,8 @@ Start with environment probing only; do not install anything until you have read
 - `02_probe_h800_readiness.sh`: focused 2xH800 readiness probe for GPUs, driver, topology, repos, network, and ports.
 - `05_bootstrap_h800_dreamzero_env.sh`: one-command rebuild for a fresh 2xH800 container, including Miniforge, DreamZero, checkpoint, streaming-load patch, and optional sim-evals/IsaacSim preparation.
 - `06_run_dreamzero_report_smoke.sh`: one-command DreamZero-DROID report run for meetings; skips IsaacSim, starts/reuses the server, runs zero-image and real-frame clients, and writes `logs/dreamzero_report_*.md`.
+- `07_pack_lingbot_env_to_persist.sh`: pack the working `lingbot_va` conda env into `/workspace/persist/envs/` before a GPU container is stopped.
+- `08_bootstrap_lingbot_libero_long.sh`: fresh-GPU restore/rebuild script for `lingbot-va-base` + `libero-long-lerobot`, with fast mirrors and persistent `/workspace/persist` paths.
 - `config.example.env`: copy to `config.env` and edit all paths/tokens locally on the server.
 - `common.sh`: shared helpers for config loading, conda activation, logging, disk checks, port checks, and error diagnosis.
 - `10_setup_lingbot_va.sh`: prepare a separate LingBot-VA conda env. Requires `CONFIRM_INSTALL=1` to install.
@@ -89,6 +91,20 @@ LINGBOT_TRAIN_STEPS=2 \
 LINGBOT_TRAIN_NGPU=1 \
 CONFIRM_INSTALL=1 \
 bash 30_run_lingbot_single_task_train_smoke.sh
+```
+
+For the persistent CPU-dev/GPU-training workflow, keep code, data, checkpoints, runs, logs, and packed envs under `/workspace/persist`. On a fresh GPU container:
+
+```bash
+cd /workspace/robot_wam_h800_probe_and_run
+CONFIRM_INSTALL=1 bash 08_bootstrap_lingbot_libero_long.sh
+```
+
+Before stopping the GPU container:
+
+```bash
+cd /workspace/robot_wam_h800_probe_and_run
+bash 07_pack_lingbot_env_to_persist.sh
 ```
 
 For RoboChallenge Table30 subtask expansion, point the script at the raw Table30 task root. It will pick cleaning/tool/simple manipulation subtasks first and run short jobs in parallel:
