@@ -17,6 +17,8 @@ require_dir "${LINGBOT_CKPT_DIR}" "LingBot checkpoint"
 LINGBOT_TRAIN_DATASET_DIR="${LINGBOT_TRAIN_DATASET_DIR:-}"
 [[ -n "${LINGBOT_TRAIN_DATASET_DIR}" ]] || die "Set LINGBOT_TRAIN_DATASET_DIR to a prepared LingBot/LeRobot training dataset directory."
 require_dir "${LINGBOT_TRAIN_DATASET_DIR}" "LingBot train dataset"
+LINGBOT_TRAIN_DATASET_ID="${LINGBOT_TRAIN_DATASET_ID:-robbyant/libero-long-lerobot}"
+HF_LEROBOT_HOME="${HF_LEROBOT_HOME:-${PROJECT_ROOT}/data/lerobot}"
 
 SMOKE_STEPS="${LINGBOT_TRAIN_STEPS:-2}"
 SMOKE_NGPU="${LINGBOT_TRAIN_NGPU:-1}"
@@ -34,6 +36,8 @@ INFO_COUNT="$(find "${LINGBOT_TRAIN_DATASET_DIR}" -path "*/meta/info.json" -type
 [[ -f "${LINGBOT_TRAIN_DATASET_DIR}/empty_emb.pt" ]] || die "Missing ${LINGBOT_TRAIN_DATASET_DIR}/empty_emb.pt. Generate/copy it before training."
 
 info "Dataset root: ${LINGBOT_TRAIN_DATASET_DIR}"
+info "Dataset id: ${LINGBOT_TRAIN_DATASET_ID}"
+info "HF_LEROBOT_HOME: ${HF_LEROBOT_HOME}"
 info "Found ${INFO_COUNT} LeRobot dataset(s) under dataset root."
 info "Config: ${SMOKE_CONFIG}; steps: ${SMOKE_STEPS}; GPUs: ${SMOKE_NGPU}"
 info "Output: ${SMOKE_SAVE_ROOT}"
@@ -68,9 +72,19 @@ PIP_CONSTRAINT= PIP_CONSTRAINTS= python -m pip install \
   }
 
 info "Patching LingBot train config for a tiny local smoke."
+mkdir -p "${HF_LEROBOT_HOME}/$(dirname "${LINGBOT_TRAIN_DATASET_ID}")"
+if [[ "${LINGBOT_TRAIN_DATASET_ID}" == */* ]]; then
+  CACHE_DATASET_DIR="${HF_LEROBOT_HOME}/${LINGBOT_TRAIN_DATASET_ID}"
+  if [[ ! -e "${CACHE_DATASET_DIR}" ]]; then
+    ln -s "${LINGBOT_TRAIN_DATASET_DIR}" "${CACHE_DATASET_DIR}"
+    info "Linked local dataset into LeRobot cache: ${CACHE_DATASET_DIR} -> ${LINGBOT_TRAIN_DATASET_DIR}"
+  fi
+fi
+export HF_LEROBOT_HOME
 LINGBOT_REPO="${LINGBOT_REPO}" \
 LINGBOT_CKPT_DIR="${LINGBOT_CKPT_DIR}" \
 LINGBOT_TRAIN_DATASET_DIR="${LINGBOT_TRAIN_DATASET_DIR}" \
+LINGBOT_TRAIN_DATASET_ID="${LINGBOT_TRAIN_DATASET_ID}" \
 SMOKE_STEPS="${SMOKE_STEPS}" \
 SMOKE_SAVE_ROOT="${SMOKE_SAVE_ROOT}" \
 SMOKE_CONFIG="${SMOKE_CONFIG}" \
@@ -82,6 +96,7 @@ from pathlib import Path
 repo = Path(os.environ["LINGBOT_REPO"])
 ckpt = Path(os.environ["LINGBOT_CKPT_DIR"])
 dataset = Path(os.environ["LINGBOT_TRAIN_DATASET_DIR"])
+dataset_id = os.environ["LINGBOT_TRAIN_DATASET_ID"]
 steps = int(os.environ["SMOKE_STEPS"])
 save_root = Path(os.environ["SMOKE_SAVE_ROOT"])
 config_name = os.environ["SMOKE_CONFIG"]
@@ -100,7 +115,7 @@ if not backup.exists():
 append = f'''
 
 # --- Codex H800 train-smoke overrides ---
-{Path(cfg_path).stem}.dataset_path = r"{dataset}"
+{Path(cfg_path).stem}.dataset_path = r"{dataset_id}"
 {Path(cfg_path).stem}.empty_emb_path = r"{dataset / "empty_emb.pt"}"
 {Path(cfg_path).stem}.enable_wandb = False
 {Path(cfg_path).stem}.load_worker = 0
@@ -175,6 +190,12 @@ for i, line in enumerate(lines):
 lines.insert(last_import, insert)
 p.write_text("\n".join(lines) + "\n", encoding="utf-8")
 print(f"patched local-path compatibility in {p}")
+
+text = p.read_text(encoding="utf-8")
+if "self.download_episodes(download_videos)" in text:
+    text = text.replace("self.download_episodes(download_videos)", "self.download_episodes(False)")
+    p.write_text(text, encoding="utf-8")
+    print("patched undefined download_videos fallback")
 PY
 
 info "Checking local LeRobot files before dataset construction."
@@ -236,7 +257,7 @@ PY
 
 info "Checking train imports and dataset construction before launching distributed training."
 cd "${LINGBOT_REPO}"
-SMOKE_CONFIG="${SMOKE_CONFIG}" PYTHONPATH="${LINGBOT_REPO}:${PYTHONPATH:-}" python - <<'PY'
+SMOKE_CONFIG="${SMOKE_CONFIG}" HF_LEROBOT_HOME="${HF_LEROBOT_HOME}" PYTHONPATH="${LINGBOT_REPO}:${PYTHONPATH:-}" python - <<'PY'
 import torch
 import os
 from wan_va.configs import VA_CONFIGS
@@ -248,6 +269,7 @@ print("torch", torch.__version__, "cuda", torch.version.cuda, "available", torch
 print("config", config_name)
 print("dataset_path", cfg.dataset_path)
 print("empty_emb_path", cfg.empty_emb_path)
+print("HF_LEROBOT_HOME", os.environ.get("HF_LEROBOT_HOME"))
 ds = MultiLatentLeRobotDataset(cfg, num_init_worker=1)
 print("dataset_len", len(ds))
 sample = ds[0]
@@ -260,6 +282,7 @@ info "Launching LingBot tiny train smoke."
 export TOKENIZERS_PARALLELISM=false
 export WANDB_MODE=disabled
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
+export HF_LEROBOT_HOME="${HF_LEROBOT_HOME}"
 
 PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}" \
 python -m torch.distributed.run \

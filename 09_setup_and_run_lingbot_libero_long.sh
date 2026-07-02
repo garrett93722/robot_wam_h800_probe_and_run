@@ -23,6 +23,7 @@ LINGBOT_REPO="${LINGBOT_REPO:-${SOURCE_ROOT}/lingbot-va}"
 LINGBOT_CKPT_DIR="${LINGBOT_BASE_CKPT_DIR:-${PROJECT_ROOT}/checkpoints/lingbot-va-base}"
 LINGBOT_ENV_NAME="${LINGBOT_ENV_NAME:-lingbot_va}"
 DATASET_DIR="${LINGBOT_TRAIN_DATASET_DIR:-${PROJECT_ROOT}/data/lerobot/libero-long-lerobot}"
+DATASET_ID="${LINGBOT_TRAIN_DATASET_ID:-robbyant/libero-long-lerobot}"
 SMOKE_STEPS="${LINGBOT_TRAIN_STEPS:-1}"
 SMOKE_NGPU="${LINGBOT_TRAIN_NGPU:-1}"
 SMOKE_SAVE_ROOT="${LINGBOT_TRAIN_SAVE_ROOT:-${PROJECT_ROOT}/runs/lingbot_libero_long_base_smoke_$(timestamp)}"
@@ -33,8 +34,9 @@ PIP_INDEX_URL_FAST="${PIP_INDEX_URL_FAST:-https://mirrors.tencent.com/pypi/simpl
 PIP_TRUSTED_HOST_FAST="${PIP_TRUSTED_HOST_FAST:-mirrors.tencent.com}"
 HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
 HF_HOME="${HF_HOME:-${PROJECT_ROOT}/.cache/huggingface}"
+HF_LEROBOT_HOME="${HF_LEROBOT_HOME:-${PROJECT_ROOT}/data/lerobot}"
 
-mkdir -p "${SOURCE_ROOT}" "${PROJECT_ROOT}/checkpoints" "${PROJECT_ROOT}/data/lerobot" "${PROJECT_ROOT}/runs" "${HF_HOME}"
+mkdir -p "${SOURCE_ROOT}" "${PROJECT_ROOT}/checkpoints" "${PROJECT_ROOT}/data/lerobot" "${PROJECT_ROOT}/runs" "${HF_HOME}" "${HF_LEROBOT_HOME}"
 
 section() {
   echo
@@ -164,6 +166,19 @@ print("saved", out, tuple(embeds[0].shape), embeds[0].dtype)
 PY
 }
 
+link_lerobot_cache() {
+  if [[ "${DATASET_ID}" == */* ]]; then
+    local cache_dataset_dir="${HF_LEROBOT_HOME}/${DATASET_ID}"
+    mkdir -p "$(dirname "${cache_dataset_dir}")"
+    if [[ ! -e "${cache_dataset_dir}" ]]; then
+      ln -s "${DATASET_DIR}" "${cache_dataset_dir}"
+      info "Linked local dataset into LeRobot cache: ${cache_dataset_dir} -> ${DATASET_DIR}"
+    else
+      info "LeRobot cache dataset path exists: ${cache_dataset_dir}"
+    fi
+  fi
+}
+
 section "GPU check"
 nvidia-smi || warn "nvidia-smi failed. This must run in the GPU training terminal."
 
@@ -204,6 +219,7 @@ PIP_CONSTRAINT= PIP_CONSTRAINTS= python -m pip install \
 
 section "empty_emb"
 ensure_empty_emb
+link_lerobot_cache
 
 section "Final checks"
 [[ -f "${LINGBOT_CKPT_DIR}/transformer/config.json" ]] || die "missing ${LINGBOT_CKPT_DIR}/transformer/config.json"
@@ -225,6 +241,7 @@ if [[ "${RUN_LINGBOT_LIBERO_LONG_SMOKE:-1}" == "1" ]]; then
   LINGBOT_CKPT_DIR="${LINGBOT_CKPT_DIR}" \
   LINGBOT_REPO="${LINGBOT_REPO}" \
   LINGBOT_TRAIN_DATASET_DIR="${DATASET_DIR}" \
+  LINGBOT_TRAIN_DATASET_ID="${DATASET_ID}" \
   LINGBOT_TRAIN_CONFIG=libero_train \
   LINGBOT_TRAIN_STEPS="${SMOKE_STEPS}" \
   LINGBOT_TRAIN_NGPU="${SMOKE_NGPU}" \
