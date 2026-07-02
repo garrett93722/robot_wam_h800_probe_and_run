@@ -81,6 +81,9 @@ clone_repos() {
 
 download_assets() {
   export HF_HOME HF_ENDPOINT HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-1}" HF_HUB_ENABLE_HF_TRANSFER="${HF_HUB_ENABLE_HF_TRANSFER:-0}"
+  info "HF_ENDPOINT=${HF_ENDPOINT}"
+  info "HF_HOME=${HF_HOME}"
+  info "HF_HUB_DISABLE_XET=${HF_HUB_DISABLE_XET}; HF_HUB_ENABLE_HF_TRANSFER=${HF_HUB_ENABLE_HF_TRANSFER}"
   "${MINIFORGE_PREFIX}/bin/python" -m pip install -U "huggingface_hub[cli]" hf-xet -i "${PIP_INDEX_URL_FAST}" || \
     "${MINIFORGE_PREFIX}/bin/python" -m pip install -U "huggingface_hub[cli]" hf-xet -i https://pypi.org/simple
 
