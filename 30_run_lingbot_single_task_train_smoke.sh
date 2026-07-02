@@ -131,6 +131,70 @@ t_cfg.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 print(f"set {t_cfg} attn_mode: {old!r} -> 'flex'")
 PY
 
+info "Patching LingBot/LeRobot compatibility helpers."
+LINGBOT_REPO="${LINGBOT_REPO}" python - <<'PY'
+import os
+from pathlib import Path
+
+repo = Path(os.environ["LINGBOT_REPO"])
+p = repo / "wan_va" / "dataset" / "lerobot_latent_dataset.py"
+if not p.exists():
+    raise SystemExit(f"missing {p}")
+s = p.read_text(encoding="utf-8")
+needle = "get_safe_version"
+if needle in s and "def get_safe_version(repo_id, revision=None):" not in s:
+    insert = '''
+
+# --- Codex compatibility: lerobot>=0.3 may not expose get_safe_version here ---
+try:
+    from lerobot.datasets.utils import get_safe_version  # type: ignore
+except Exception:
+    def get_safe_version(repo_id, revision=None):
+        return revision
+# --- end Codex compatibility ---
+'''
+    lines = s.splitlines()
+    last_import = 0
+    for i, line in enumerate(lines):
+        if line.startswith("import ") or line.startswith("from "):
+            last_import = i + 1
+    lines.insert(last_import, insert)
+    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"patched {p}")
+else:
+    print(f"compat already OK: {p}")
+PY
+
+info "Checking local LeRobot files before dataset construction."
+LINGBOT_TRAIN_DATASET_DIR="${LINGBOT_TRAIN_DATASET_DIR}" python - <<'PY'
+import json
+import os
+from pathlib import Path
+
+root = Path(os.environ["LINGBOT_TRAIN_DATASET_DIR"])
+info = root / "meta" / "info.json"
+if not info.exists():
+    raise SystemExit(f"missing {info}")
+data_files = sorted(root.glob("data/**/*.parquet"))
+video_files = sorted(root.glob("videos/**/*"))
+latent_files = sorted(root.glob("latents/**/*"))
+latent_files = [p for p in latent_files if p.is_file()]
+print("dataset_root", root)
+print("meta/info.json OK")
+print("data parquet files", len(data_files))
+print("video files", len([p for p in video_files if p.is_file()]))
+print("latent files", len(latent_files))
+if data_files:
+    print("first data file", data_files[0])
+if latent_files:
+    print("first latent file", latent_files[0])
+if not data_files:
+    raise SystemExit(
+        "No data/**/*.parquet files found. The LeRobot dataset download is incomplete; "
+        "re-run 09_setup_and_run_lingbot_libero_long.sh with RUN_LINGBOT_LIBERO_LONG_SMOKE=0."
+    )
+PY
+
 info "Checking train imports and dataset construction before launching distributed training."
 cd "${LINGBOT_REPO}"
 SMOKE_CONFIG="${SMOKE_CONFIG}" PYTHONPATH="${LINGBOT_REPO}:${PYTHONPATH:-}" python - <<'PY'

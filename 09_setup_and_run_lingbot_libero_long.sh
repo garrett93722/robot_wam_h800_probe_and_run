@@ -41,6 +41,11 @@ section() {
   echo "===== $* ====="
 }
 
+has_lerobot_data_files() {
+  [[ -d "${DATASET_DIR}/data" ]] || return 1
+  find "${DATASET_DIR}/data" -type f -name "*.parquet" -print -quit | grep -q .
+}
+
 install_miniforge() {
   if [[ -x "${MINIFORGE_PREFIX}/bin/conda" ]]; then
     info "Miniforge exists: ${MINIFORGE_PREFIX}"
@@ -104,7 +109,7 @@ PY
     info "Base checkpoint exists: ${LINGBOT_CKPT_DIR}"
   fi
 
-  if [[ ! -f "${DATASET_DIR}/meta/info.json" || ! -d "${DATASET_DIR}/latents" ]]; then
+  if [[ ! -f "${DATASET_DIR}/meta/info.json" || ! -d "${DATASET_DIR}/latents" ]] || ! has_lerobot_data_files; then
     info "Downloading libero-long-lerobot dataset to ${DATASET_DIR}"
     "${MINIFORGE_PREFIX}/bin/python" - <<PY
 from huggingface_hub import snapshot_download
@@ -204,6 +209,7 @@ section "Final checks"
 [[ -f "${LINGBOT_CKPT_DIR}/transformer/config.json" ]] || die "missing ${LINGBOT_CKPT_DIR}/transformer/config.json"
 [[ -f "${DATASET_DIR}/meta/info.json" ]] || die "missing ${DATASET_DIR}/meta/info.json"
 [[ -d "${DATASET_DIR}/latents" ]] || die "missing ${DATASET_DIR}/latents"
+has_lerobot_data_files || die "missing ${DATASET_DIR}/data/**/*.parquet"
 [[ -f "${DATASET_DIR}/empty_emb.pt" ]] || die "missing ${DATASET_DIR}/empty_emb.pt"
 PYTHONPATH="${LINGBOT_REPO}:${PYTHONPATH:-}" python - <<'PY'
 import torch
