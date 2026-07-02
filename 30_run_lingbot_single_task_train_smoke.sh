@@ -214,6 +214,37 @@ if "self.download_episodes(download_videos)" in text:
     text = text.replace("self.download_episodes(download_videos)", "self.download_episodes(False)")
     p.write_text(text, encoding="utf-8")
     print("patched undefined download_videos fallback")
+
+text = p.read_text(encoding="utf-8")
+old = '''        try:
+            assert all((self.root / fpath).is_file() for fpath in self.get_episodes_file_paths())
+            self.hf_dataset = self.load_hf_dataset()
+        except (AssertionError, FileNotFoundError, NotADirectoryError):
+            self.revision = get_safe_version(self.repo_id, self.revision)
+            self.download_episodes(False)
+            self.hf_dataset = self.load_hf_dataset()
+'''
+new = '''        if Path(str(repo_id)).is_absolute():
+            # Local latent datasets may not keep raw videos; LingBot only needs
+            # parquet actions plus precomputed latents for this training path.
+            self.hf_dataset = self.load_hf_dataset()
+        else:
+            try:
+                assert all((self.root / fpath).is_file() for fpath in self.get_episodes_file_paths())
+                self.hf_dataset = self.load_hf_dataset()
+            except (AssertionError, FileNotFoundError, NotADirectoryError):
+                self.revision = get_safe_version(self.repo_id, self.revision)
+                self.download_episodes(False)
+                self.hf_dataset = self.load_hf_dataset()
+'''
+if old in text:
+    text = text.replace(old, new)
+    p.write_text(text, encoding="utf-8")
+    print("patched local latent dataset to skip raw-video episode download check")
+elif "Local latent datasets may not keep raw videos" in text:
+    print("local latent dataset loading patch already present")
+else:
+    print("WARN: expected LeRobot assertion/download block not found; leaving file unchanged")
 PY
 
 info "Checking local LeRobot files before dataset construction."
