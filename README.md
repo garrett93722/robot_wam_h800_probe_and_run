@@ -12,6 +12,7 @@ Start with environment probing only; do not install anything until you have read
 - `06_run_dreamzero_report_smoke.sh`: one-command DreamZero-DROID report run for meetings; skips IsaacSim, starts/reuses the server, runs zero-image and real-frame clients, and writes `logs/dreamzero_report_*.md`.
 - `07_pack_lingbot_env_to_persist.sh`: pack the working `lingbot_va` conda env into `/workspace/persist/envs/` before a GPU container is stopped.
 - `08_bootstrap_lingbot_libero_long.sh`: fresh-GPU restore/rebuild script for `lingbot-va-base` + `libero-long-lerobot`, with fast mirrors and persistent `/workspace/persist` paths.
+- `09_setup_and_run_lingbot_libero_long.sh`: one-command fresh-GPU setup and real 1-step LingBot-VA `libero-long-lerobot` fine-tune smoke using `lingbot-va-base`.
 - `config.example.env`: copy to `config.env` and edit all paths/tokens locally on the server.
 - `common.sh`: shared helpers for config loading, conda activation, logging, disk checks, port checks, and error diagnosis.
 - `10_setup_lingbot_va.sh`: prepare a separate LingBot-VA conda env. Requires `CONFIRM_INSTALL=1` to install.
@@ -105,6 +106,16 @@ Before stopping the GPU container:
 ```bash
 cd /workspace/robot_wam_h800_probe_and_run
 bash 07_pack_lingbot_env_to_persist.sh
+```
+
+If the GPU task filesystem is not shared with the CPU development instance, use the all-in-one GPU script directly in the GPU web terminal:
+
+```bash
+cd /workspace
+git clone https://github.com/garrett93722/robot_wam_h800_probe_and_run.git || true
+cd /workspace/robot_wam_h800_probe_and_run
+git pull
+CONFIRM_INSTALL=1 bash 09_setup_and_run_lingbot_libero_long.sh
 ```
 
 For RoboChallenge Table30 subtask expansion, point the script at the raw Table30 task root. It will pick cleaning/tool/simple manipulation subtasks first and run short jobs in parallel:

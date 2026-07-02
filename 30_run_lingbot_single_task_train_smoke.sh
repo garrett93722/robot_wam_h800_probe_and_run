@@ -46,12 +46,24 @@ if ! conda_env_exists "${LINGBOT_ENV_NAME}" 2>/dev/null; then
 fi
 
 activate_env "${LINGBOT_ENV_NAME}"
+ENV_PREFIX="$(conda env list | awk -v n="${LINGBOT_ENV_NAME}" '$1 == n {print $NF; exit}')"
+if [[ -n "${ENV_PREFIX}" && -d "${ENV_PREFIX}/bin" ]]; then
+  export CONDA_PREFIX="${ENV_PREFIX}"
+  export PATH="${ENV_PREFIX}/bin:${PATH}"
+  hash -r
+fi
+info "Python: $(which python)"
 
 info "Installing LingBot post-training dependencies."
-python -m pip install scipy wandb lerobot==0.3.3 --no-deps \
+PIP_CONSTRAINT= PIP_CONSTRAINTS= python -m pip install \
+  scipy wandb lerobot==0.3.3 datasets==3.6.0 "dill<0.3.9" "multiprocess<0.70.17" \
+  "packaging>=24.2" jsonlines av \
   2>&1 | tee -a "${LOG_DIR}/lingbot_train_deps_$(timestamp).log" || {
     warn "Direct lerobot==0.3.3 install failed. Trying official PyPI without the current mirror."
-    python -m pip install scipy wandb lerobot==0.3.3 --no-deps -i https://pypi.org/simple \
+    PIP_CONSTRAINT= PIP_CONSTRAINTS= python -m pip install \
+      scipy wandb lerobot==0.3.3 datasets==3.6.0 "dill<0.3.9" "multiprocess<0.70.17" \
+      "packaging>=24.2" jsonlines av \
+      -i https://pypi.org/simple \
       2>&1 | tee -a "${LOG_DIR}/lingbot_train_deps_pypi_$(timestamp).log"
   }
 
