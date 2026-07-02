@@ -165,8 +165,8 @@ features_insert = '''
 # --- Codex compatibility: datasets parquet List feature ---
 try:
     from datasets.features import features as _datasets_features
-    if "List" not in _datasets_features._FEATURE_TYPES and "LargeList" in _datasets_features._FEATURE_TYPES:
-        _datasets_features._FEATURE_TYPES["List"] = _datasets_features._FEATURE_TYPES["LargeList"]
+    if "List" not in _datasets_features._FEATURE_TYPES and "Sequence" in _datasets_features._FEATURE_TYPES:
+        _datasets_features._FEATURE_TYPES["List"] = _datasets_features._FEATURE_TYPES["Sequence"]
 except Exception:
     pass
 # --- end Codex compatibility ---
