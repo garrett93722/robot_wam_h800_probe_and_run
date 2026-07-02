@@ -115,7 +115,7 @@ if not backup.exists():
 append = f'''
 
 # --- Codex H800 train-smoke overrides ---
-{Path(cfg_path).stem}.dataset_path = r"{dataset_id}"
+{Path(cfg_path).stem}.dataset_path = r"{dataset}"
 {Path(cfg_path).stem}.empty_emb_path = r"{dataset / "empty_emb.pt"}"
 {Path(cfg_path).stem}.enable_wandb = False
 {Path(cfg_path).stem}.load_worker = 0
@@ -190,6 +190,24 @@ for i, line in enumerate(lines):
 lines.insert(last_import, insert)
 p.write_text("\n".join(lines) + "\n", encoding="utf-8")
 print(f"patched local-path compatibility in {p}")
+
+text = p.read_text(encoding="utf-8")
+if "self.root = HF_LEROBOT_HOME / repo_id" in text:
+    text = text.replace(
+        "self.root = HF_LEROBOT_HOME / repo_id",
+        "self.root = Path(repo_id) if Path(str(repo_id)).is_absolute() else HF_LEROBOT_HOME / repo_id",
+    )
+    p.write_text(text, encoding="utf-8")
+    print("patched absolute local repo_id root handling")
+
+text = p.read_text(encoding="utf-8")
+if "self.latent_path = Path(repo_id) / 'latents'" in text:
+    text = text.replace(
+        "self.latent_path = Path(repo_id) / 'latents'",
+        "self.latent_path = self.root / 'latents'",
+    )
+    p.write_text(text, encoding="utf-8")
+    print("patched latent_path to use resolved root")
 
 text = p.read_text(encoding="utf-8")
 if "self.download_episodes(download_videos)" in text:
@@ -272,6 +290,13 @@ print("empty_emb_path", cfg.empty_emb_path)
 print("HF_LEROBOT_HOME", os.environ.get("HF_LEROBOT_HOME"))
 ds = MultiLatentLeRobotDataset(cfg, num_init_worker=1)
 print("dataset_len", len(ds))
+if len(ds) == 0:
+    print("sub_datasets", len(getattr(ds, "_datasets", [])))
+    for i, sub in enumerate(getattr(ds, "_datasets", [])):
+        print("sub_dataset", i, "root", getattr(sub, "root", None), "new_metas", len(getattr(sub, "new_metas", [])))
+        if i >= 4:
+            break
+    raise SystemExit("Dataset constructed but length is 0; no latent/action windows passed LingBot filters.")
 sample = ds[0]
 for key, value in sample.items():
     shape = tuple(value.shape) if hasattr(value, "shape") else type(value).__name__
