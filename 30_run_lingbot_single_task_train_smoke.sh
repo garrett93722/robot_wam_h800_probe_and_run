@@ -119,6 +119,7 @@ append = f'''
 {Path(cfg_path).stem}.empty_emb_path = r"{dataset / "empty_emb.pt"}"
 {Path(cfg_path).stem}.enable_wandb = False
 {Path(cfg_path).stem}.load_worker = 0
+{Path(cfg_path).stem}.init_worker = 1
 {Path(cfg_path).stem}.save_interval = max(1, {steps})
 {Path(cfg_path).stem}.gc_interval = 1
 {Path(cfg_path).stem}.batch_size = 1
@@ -204,6 +205,29 @@ p.write_text("\n".join(lines) + "\n", encoding="utf-8")
 print(f"patched datasets/List and local-path compatibility in {p}")
 
 text = p.read_text(encoding="utf-8")
+old = '''    with Pool(num_init_worker) as pool:
+        datasets_out_lst = pool.map(construct_func, repo_list)
+
+    return datasets_out_lst
+'''
+new = '''    if num_init_worker <= 1:
+        return [construct_func(repo_id) for repo_id in repo_list]
+
+    with Pool(num_init_worker) as pool:
+        datasets_out_lst = pool.map(construct_func, repo_list)
+
+    return datasets_out_lst
+'''
+if old in text:
+    text = text.replace(old, new)
+    p.write_text(text, encoding="utf-8")
+    print("patched dataset construction to avoid multiprocessing when num_init_worker<=1")
+elif "if num_init_worker <= 1:" in text:
+    print("sequential dataset construction patch already present")
+else:
+    print("WARN: expected multiprocessing Pool block not found")
+
+text = p.read_text(encoding="utf-8")
 if "self.root = HF_LEROBOT_HOME / repo_id" in text:
     text = text.replace(
         "self.root = HF_LEROBOT_HOME / repo_id",
@@ -257,6 +281,21 @@ elif "Local latent datasets may not keep raw videos" in text:
     print("local latent dataset loading patch already present")
 else:
     print("WARN: expected LeRobot assertion/download block not found; leaving file unchanged")
+
+train_path = repo / "wan_va" / "train.py"
+train_text = train_path.read_text(encoding="utf-8")
+if "torch.multiprocessing.set_sharing_strategy" not in train_text:
+    train_text = train_text.replace(
+        "import torch\n",
+        "import torch\ntry:\n    torch.multiprocessing.set_sharing_strategy('file_system')\nexcept Exception:\n    pass\n",
+    )
+if "MultiLatentLeRobotDataset(config=config, num_init_worker=" not in train_text:
+    train_text = train_text.replace(
+        "train_dataset = MultiLatentLeRobotDataset(config=config)",
+        "train_dataset = MultiLatentLeRobotDataset(config=config, num_init_worker=int(getattr(config, 'init_worker', 1)))",
+    )
+train_path.write_text(train_text, encoding="utf-8")
+print(f"patched train dataset init in {train_path}")
 PY
 
 info "Checking local LeRobot files before dataset construction."
