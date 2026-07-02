@@ -18,7 +18,9 @@ confirm_install_or_exit
 PROJECT_ROOT="${PROJECT_ROOT:-/workspace}"
 SOURCE_ROOT="${SOURCE_ROOT:-${PROJECT_ROOT}/sources}"
 LINGBOT_REPO="${LINGBOT_REPO:-${SOURCE_ROOT}/lingbot-va}"
-LINGBOT_CKPT_DIR="${LINGBOT_CKPT_DIR:-${PROJECT_ROOT}/checkpoints/lingbot-va-base}"
+# This script is specifically for the base-model libero-long task. Do not let
+# an older config.env posttrain checkpoint path silently redirect it.
+LINGBOT_CKPT_DIR="${LINGBOT_BASE_CKPT_DIR:-${PROJECT_ROOT}/checkpoints/lingbot-va-base}"
 LINGBOT_ENV_NAME="${LINGBOT_ENV_NAME:-lingbot_va}"
 DATASET_DIR="${LINGBOT_TRAIN_DATASET_DIR:-${PROJECT_ROOT}/data/lerobot/libero-long-lerobot}"
 SMOKE_STEPS="${LINGBOT_TRAIN_STEPS:-1}"
