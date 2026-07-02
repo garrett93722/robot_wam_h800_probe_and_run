@@ -156,9 +156,21 @@ p = repo / "wan_va" / "dataset" / "lerobot_latent_dataset.py"
 if not p.exists():
     raise SystemExit(f"missing {p}")
 s = p.read_text(encoding="utf-8")
+features_start = "# --- Codex compatibility: datasets parquet List feature ---"
 start = "# --- Codex compatibility: lerobot local-path safe version ---"
 old_start = "# --- Codex compatibility: lerobot>=0.3 may not expose get_safe_version here ---"
 end = "# --- end Codex compatibility ---"
+features_insert = '''
+
+# --- Codex compatibility: datasets parquet List feature ---
+try:
+    from datasets.features import features as _datasets_features
+    if "List" not in _datasets_features._FEATURE_TYPES and "LargeList" in _datasets_features._FEATURE_TYPES:
+        _datasets_features._FEATURE_TYPES["List"] = _datasets_features._FEATURE_TYPES["LargeList"]
+except Exception:
+    pass
+# --- end Codex compatibility ---
+'''
 insert = '''
 
 # --- Codex compatibility: lerobot local-path safe version ---
@@ -176,7 +188,7 @@ def get_safe_version(repo_id, revision=None):
     return _hub_get_safe_version(repo_id, revision)
 # --- end Codex compatibility ---
 '''
-for marker in (start, old_start):
+for marker in (features_start, start, old_start):
     while marker in s and end in s.split(marker, 1)[1]:
         before = s.split(marker, 1)[0].rstrip()
         after = s.split(marker, 1)[1].split(end, 1)[1].lstrip()
@@ -187,9 +199,9 @@ last_import = 0
 for i, line in enumerate(lines):
     if line.startswith("import ") or line.startswith("from "):
         last_import = i + 1
-lines.insert(last_import, insert)
+lines.insert(last_import, features_insert + insert)
 p.write_text("\n".join(lines) + "\n", encoding="utf-8")
-print(f"patched local-path compatibility in {p}")
+print(f"patched datasets/List and local-path compatibility in {p}")
 
 text = p.read_text(encoding="utf-8")
 if "self.root = HF_LEROBOT_HOME / repo_id" in text:
