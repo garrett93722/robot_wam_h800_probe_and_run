@@ -141,28 +141,40 @@ p = repo / "wan_va" / "dataset" / "lerobot_latent_dataset.py"
 if not p.exists():
     raise SystemExit(f"missing {p}")
 s = p.read_text(encoding="utf-8")
-needle = "get_safe_version"
-if needle in s and "def get_safe_version(repo_id, revision=None):" not in s:
-    insert = '''
+start = "# --- Codex compatibility: lerobot local-path safe version ---"
+old_start = "# --- Codex compatibility: lerobot>=0.3 may not expose get_safe_version here ---"
+end = "# --- end Codex compatibility ---"
+insert = '''
 
-# --- Codex compatibility: lerobot>=0.3 may not expose get_safe_version here ---
+# --- Codex compatibility: lerobot local-path safe version ---
 try:
-    from lerobot.datasets.utils import get_safe_version  # type: ignore
+    from lerobot.datasets.utils import get_safe_version as _hub_get_safe_version  # type: ignore
 except Exception:
-    def get_safe_version(repo_id, revision=None):
+    _hub_get_safe_version = None
+
+def get_safe_version(repo_id, revision=None):
+    from pathlib import Path as _Path
+    if isinstance(repo_id, (str, bytes)) and _Path(str(repo_id)).exists():
         return revision
+    if _hub_get_safe_version is None:
+        return revision
+    return _hub_get_safe_version(repo_id, revision)
 # --- end Codex compatibility ---
 '''
-    lines = s.splitlines()
-    last_import = 0
-    for i, line in enumerate(lines):
-        if line.startswith("import ") or line.startswith("from "):
-            last_import = i + 1
-    lines.insert(last_import, insert)
-    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"patched {p}")
-else:
-    print(f"compat already OK: {p}")
+for marker in (start, old_start):
+    while marker in s and end in s.split(marker, 1)[1]:
+        before = s.split(marker, 1)[0].rstrip()
+        after = s.split(marker, 1)[1].split(end, 1)[1].lstrip()
+        s = before + "\n" + after
+
+lines = s.splitlines()
+last_import = 0
+for i, line in enumerate(lines):
+    if line.startswith("import ") or line.startswith("from "):
+        last_import = i + 1
+lines.insert(last_import, insert)
+p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+print(f"patched local-path compatibility in {p}")
 PY
 
 info "Checking local LeRobot files before dataset construction."
@@ -193,6 +205,33 @@ if not data_files:
         "No data/**/*.parquet files found. The LeRobot dataset download is incomplete; "
         "re-run 09_setup_and_run_lingbot_libero_long.sh with RUN_LINGBOT_LIBERO_LONG_SMOKE=0."
     )
+
+info_data = json.loads(info.read_text(encoding="utf-8"))
+total = int(info_data.get("total_episodes") or info_data.get("total_episodes_count") or 0)
+chunks_size = int(info_data.get("chunks_size") or info_data.get("chunk_size") or 1000)
+data_path = info_data.get("data_path")
+if total and data_path:
+    missing = []
+    for episode_index in range(total):
+        episode_chunk = episode_index // chunks_size
+        try:
+            rel = data_path.format(episode_chunk=episode_chunk, episode_index=episode_index)
+        except Exception:
+            break
+        if not (root / rel).is_file():
+            missing.append(rel)
+            if len(missing) >= 20:
+                break
+    if missing:
+        print("expected total episodes", total)
+        print("data_path template", data_path)
+        print("missing data files sample:")
+        for rel in missing:
+            print("  ", rel)
+        raise SystemExit(
+            "LeRobot metadata points to missing parquet files. Dataset is incomplete or laid out differently; "
+            "re-run 09_setup_and_run_lingbot_libero_long.sh with RUN_LINGBOT_LIBERO_LONG_SMOKE=0."
+        )
 PY
 
 info "Checking train imports and dataset construction before launching distributed training."
